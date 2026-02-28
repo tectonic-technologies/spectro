@@ -1,7 +1,7 @@
 # OpenClaw Fly.io deployment configuration
 # See https://fly.io/docs/reference/configuration/
 
-app = "pawalker-openclaw"
+app = "spectro-openclaw"
 primary_region = "bom"
 
 [build]
