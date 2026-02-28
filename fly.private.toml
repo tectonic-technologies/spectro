@@ -31,8 +31,8 @@ app = "node dist/index.js gateway --allow-unconfigured --port 3000 --bind lan"
 #   - fly ssh console
 
 [[vm]]
-size = "shared-cpu-2x"
-memory = "2048mb"
+size = "shared-cpu-4x"
+memory = "4096mb"
 
 [mounts]
 source = "openclaw_data"

@@ -41,6 +41,15 @@
 - See `docs/.i18n/README.md`.
 - The pipeline can be slow/inefficient; if it’s dragging, ping @jospalmbier on Discord instead of hacking around it.
 
+## Fly.io deployment
+
+- Full guide: `docs/install/fly.md`. Config files: `fly.toml` (public), `fly.private.toml` (no public IP).
+- Non-loopback binding (`--bind lan`) **requires** `gateway.controlUi.allowedOrigins` in `/data/openclaw.json`. Without it the gateway crashes on startup. There is no env var override; the config file must exist before first start.
+- Minimum VM: `shared-cpu-4x` / 4GB. `shared-cpu-2x` hangs on cold starts (module init too slow for 2 vCPUs).
+- `fly ssh console -C` does not support `&&` or shell redirection. Use `sh -c '...'` or pipe via `echo '...' | fly ssh console -C "tee /path"`.
+- Config file written via SSH is owned by `root`; run `fly ssh console -C "chown node:node /data/openclaw.json"` so the gateway (runs as `node` user) can read it.
+- Never use `dangerouslyAllowHostHeaderOriginFallback` on internet-facing deployments (CORS bypass risk).
+
 ## exe.dev VM ops (general)
 
 - Access: stable path is `ssh exe.dev` then `ssh vm-name` (assume SSH key already set).

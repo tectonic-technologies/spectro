@@ -72,8 +72,8 @@ primary_region = "iad"
   processes = ["app"]
 
 [[vm]]
-  size = "shared-cpu-2x"
-  memory = "2048mb"
+  size = "shared-cpu-4x"
+  memory = "4096mb"
 
 [mounts]
   source = "openclaw_data"
@@ -87,7 +87,7 @@ primary_region = "iad"
 | `--bind lan`                   | Binds to `0.0.0.0` so Fly's proxy can reach the gateway                     |
 | `--allow-unconfigured`         | Starts without a config file (you'll create one after)                      |
 | `internal_port = 3000`         | Must match `--port 3000` (or `OPENCLAW_GATEWAY_PORT`) for Fly health checks |
-| `memory = "2048mb"`            | 512MB is too small; 2GB recommended                                         |
+| `memory = "4096mb"`            | 512MB is too small; 4GB recommended for reliable cold starts                |
 | `OPENCLAW_STATE_DIR = "/data"` | Persists state on the volume                                                |
 
 ## 3) Set secrets
@@ -132,21 +132,45 @@ You should see:
 
 ```
 [gateway] listening on ws://0.0.0.0:3000 (PID xxx)
-[discord] logged in to discord as xxx
 ```
 
 ## 5) Create config file
 
-SSH into the machine to create a proper config:
+The gateway requires a config file with `gateway.controlUi.allowedOrigins` when binding to non-loopback (`--bind lan`). Without it, the gateway will refuse to start.
+
+SSH into the machine and create a minimal config:
+
+```bash
+echo '{"gateway":{"mode":"local","controlUi":{"allowedOrigins":["https://my-openclaw.fly.dev"]}}}' \
+  | fly ssh console -C "tee /data/openclaw.json"
+```
+
+Replace `my-openclaw` with your actual Fly app name.
+
+Then restart:
+
+```bash
+fly machines list                    # find your machine ID
+fly machine restart <machine-id>
+```
+
+Verify the gateway starts:
+
+```bash
+fly logs
+```
+
+You should see `[gateway] listening on ws://0.0.0.0:3000`.
+
+### Full config example
+
+For a more complete setup with agents and channels, SSH in and write a full config:
 
 ```bash
 fly ssh console
 ```
 
-Create the config directory and file:
-
 ```bash
-mkdir -p /data
 cat > /data/openclaw.json << 'EOF'
 {
   "agents": {
@@ -190,7 +214,9 @@ cat > /data/openclaw.json << 'EOF'
   },
   "gateway": {
     "mode": "local",
-    "bind": "auto"
+    "controlUi": {
+      "allowedOrigins": ["https://my-openclaw.fly.dev"]
+    }
   },
   "meta": {
     "lastTouchedVersion": "2026.1.29"
@@ -198,6 +224,8 @@ cat > /data/openclaw.json << 'EOF'
 }
 EOF
 ```
+
+**Important:** Replace `my-openclaw` in `allowedOrigins` with your actual Fly app name.
 
 **Note:** With `OPENCLAW_STATE_DIR=/data`, the config path is `/data/openclaw.json`.
 
@@ -227,7 +255,23 @@ fly open
 
 Or visit `https://my-openclaw.fly.dev/`
 
-Paste your gateway token (the one from `OPENCLAW_GATEWAY_TOKEN`) to authenticate.
+**Step 1: Enter the gateway token**
+
+Click **Overview** in the left sidebar. Paste your `OPENCLAW_GATEWAY_TOKEN` value into the **Gateway Token** field and click **Connect**.
+
+**Step 2: Approve device pairing**
+
+On first connection from a new browser, the Control UI will show a "pairing required" message. Approve the device via SSH:
+
+```bash
+# List pending pairing requests
+fly ssh console -C "sh -c 'OPENCLAW_GATEWAY_PORT=3000 node /app/openclaw.mjs devices list'"
+
+# Approve the pending request (copy the Request ID from the output)
+fly ssh console -C "sh -c 'OPENCLAW_GATEWAY_PORT=3000 node /app/openclaw.mjs devices approve <request-id>'"
+```
+
+The browser will reconnect automatically after approval. You only need to do this once per browser/device.
 
 ### Logs
 
@@ -250,6 +294,12 @@ The gateway is binding to `127.0.0.1` instead of `0.0.0.0`.
 
 **Fix:** Add `--bind lan` to your process command in `fly.toml`.
 
+### "non-loopback Control UI requires gateway.controlUi.allowedOrigins"
+
+The gateway crashes on startup because `--bind lan` requires a config file with `gateway.controlUi.allowedOrigins`.
+
+**Fix:** Create a config file with your app's origin before starting the gateway. See [Step 5](#5-create-config-file).
+
 ### Health checks failing / connection refused
 
 Fly can't reach the gateway on the configured port.
@@ -264,16 +314,31 @@ Container keeps restarting or getting killed. Signs: `SIGABRT`, `v8::internal::R
 
 ```toml
 [[vm]]
-  memory = "2048mb"
+  size = "shared-cpu-4x"
+  memory = "4096mb"
 ```
 
 Or update an existing machine:
 
 ```bash
-fly machine update <machine-id> --vm-memory 2048 -y
+fly machine update <machine-id> --vm-memory 4096 --vm-size shared-cpu-4x -y
 ```
 
-**Note:** 512MB is too small. 1GB may work but can OOM under load or with verbose logging. **2GB is recommended.**
+**Note:** 512MB is too small. 2GB may work for warm restarts but cold starts can hang on `shared-cpu-2x` due to module initialization. **`shared-cpu-4x` with 4GB is recommended.**
+
+### Gateway process running but never listens (cold start hang)
+
+The gateway process is alive (`ps aux` shows `openclaw-gateway`) but never binds to port 3000. Fly proxy reports "instance refused connection".
+
+This happens on `shared-cpu-2x` (2 vCPUs) because module initialization is too slow. The gateway can take 5+ minutes to start on a small VM, exceeding Fly's patience.
+
+**Fix:** Upgrade to `shared-cpu-4x`:
+
+```bash
+fly machine update <machine-id> --vm-memory 4096 --vm-size shared-cpu-4x -y
+```
+
+After upgrade, cold starts complete in ~50 seconds.
 
 ### Gateway Lock Issues
 
@@ -351,7 +416,7 @@ fly machines list
 fly machine update <machine-id> --command "node dist/index.js gateway --port 3000 --bind lan" -y
 
 # Or with memory increase
-fly machine update <machine-id> --vm-memory 2048 --command "node dist/index.js gateway --port 3000 --bind lan" -y
+fly machine update <machine-id> --vm-memory 4096 --vm-size shared-cpu-4x --command "node dist/index.js gateway --port 3000 --bind lan" -y
 ```
 
 **Note:** After `fly deploy`, the machine command may reset to what's in `fly.toml`. If you made manual changes, re-apply them after deploy.
@@ -482,9 +547,10 @@ The ngrok tunnel runs inside the container and provides a public webhook URL wit
 
 ## Cost
 
-With the recommended config (`shared-cpu-2x`, 2GB RAM):
+With the recommended config (`shared-cpu-4x`, 4GB RAM):
 
-- ~$10-15/month depending on usage
+- ~$25-30/month depending on usage
 - Free tier includes some allowance
+- `shared-cpu-2x` (2GB) is cheaper (~$10-15/month) but cold starts may hang due to slow module initialization
 
 See [Fly.io pricing](https://fly.io/docs/about/pricing/) for details.

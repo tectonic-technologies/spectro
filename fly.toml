@@ -1,8 +1,8 @@
 # OpenClaw Fly.io deployment configuration
 # See https://fly.io/docs/reference/configuration/
 
-app = "openclaw"
-primary_region = "iad" # change to your closest region
+app = "pawalker-openclaw"
+primary_region = "bom"
 
 [build]
 dockerfile = "Dockerfile"
@@ -26,8 +26,8 @@ min_machines_running = 1
 processes = ["app"]
 
 [[vm]]
-size = "shared-cpu-2x"
-memory = "2048mb"
+size = "shared-cpu-4x"
+memory = "4096mb"
 
 [mounts]
 source = "openclaw_data"
