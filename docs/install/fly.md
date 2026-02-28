@@ -283,8 +283,27 @@ fly logs --no-tail    # Recent logs
 ### SSH Console
 
 ```bash
-fly ssh console
+# Interactive shell
+fly ssh console -a spectro-openclaw
+
+# Run a single command (no interactive shell)
+fly ssh console -a spectro-openclaw -C "cat /data/openclaw.json"
+
+# Run shell pipelines or && chains (wrap in sh -c)
+fly ssh console -a spectro-openclaw -C "sh -c 'ls -la /data && cat /data/openclaw.json'"
 ```
+
+**Notes:**
+
+- `fly ssh console -C` does not support `&&`, pipes, or shell redirection directly. Wrap in `sh -c '...'` or use the interactive shell.
+- To write files from your local machine, pipe into `tee`:
+  ```bash
+  echo '{"key":"value"}' | fly ssh console -a spectro-openclaw -C "tee /data/openclaw.json"
+  ```
+- Files written via SSH are owned by `root`. If the gateway (runs as `node` user) needs to read them:
+  ```bash
+  fly ssh console -a spectro-openclaw -C "chown node:node /data/openclaw.json"
+  ```
 
 ## Troubleshooting
 
