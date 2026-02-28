@@ -1,3 +1,40 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+**OpenClaw** is a multi-channel personal AI assistant gateway. It connects to messaging platforms (WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, Matrix, and more), routes messages through configurable AI model providers (Anthropic, OpenAI, Google, etc.), and delivers responses back. It runs locally with a privacy-first architecture — single-user, self-hosted.
+
+The codebase is a TypeScript ESM monorepo with native apps for macOS (SwiftUI menubar), iOS (SwiftUI), and Android (Kotlin), plus a Lit-based web control UI.
+
+## Architecture
+
+```
+CLI (openclaw.mjs → entry.ts → cli/program)
+  └── Gateway Server (gateway/server.impl.ts)
+        ├── Channel Adapters (telegram/, discord/, slack/, whatsapp/, signal/, imessage/, line/, web/)
+        │     └── Plugin channels (extensions/msteams, extensions/matrix, extensions/zalo, ...)
+        ├── Agent Runtime (acp/, agents/) → LLM providers (providers/)
+        │     └── Skills, tools, memory, hooks
+        ├── Routing & Sessions (routing/, sessions/, channels/)
+        ├── Media Pipeline (media/, media-understanding/, tts/)
+        ├── Control UI (ui/ — Lit web components, served via Express)
+        └── Node Host IPC (node-host/ — bridge to native iOS/Android/macOS apps)
+```
+
+**Key architectural patterns:**
+- **Adapter pattern** for channels — each implements `ChannelPlugin` with `ChannelMessagingAdapter`, `ChannelAuthAdapter`, etc. (see `src/channels/plugins/types.ts` and `types.adapters.ts`)
+- **Plugin registry** — extensions register tools, commands, hooks, HTTP routes, channels, and providers at startup (`src/plugins/registry.ts`)
+- **Hook system (observer)** — named hooks (`gateway:startup`, `chat:receive`, `chat:before-send`, etc.) let plugins intercept/modify behavior (`src/hooks/types.ts`)
+- **ACP runtime abstraction** — pluggable AI backends: Claude, GPT, Gemini, local models. Streaming via async iterators of `AcpRuntimeEvent` (`src/acp/runtime/types.ts`)
+- **Dependency injection** via `createDefaultDeps()` (`src/cli/deps.ts`) threaded through CLI commands and gateway
+- **Session-based routing** — `SessionKey` (channel + account + conversation) maps to agent sessions via `RouteBinding` (`src/routing/`)
+
+**Monorepo workspaces** (pnpm-workspace.yaml): root (core CLI), `ui/` (control UI), `packages/*` (compat shims), `extensions/*` (35+ plugin packages).
+
+**Entry points:** `openclaw.mjs` (shell wrapper) → `src/entry.ts` (CLI driver) → `src/index.ts` (library exports). Plugin SDK: `src/plugin-sdk/index.ts`.
+
 # Repository Guidelines
 
 - Repo: https://github.com/openclaw/openclaw
